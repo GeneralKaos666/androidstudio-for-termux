@@ -15,6 +15,15 @@ pkg install termux-x11-nightly xfce4 openjdk-21 maven wget unzip tar -y
 # Auto-detect JAVA_HOME from installed JDK with fallback
 JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java 2>/dev/null))) 2>/dev/null) || JAVA_HOME="/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk"
 
+# Detect user's default shell and set the appropriate RC file
+SHELL_NAME=$(basename "$SHELL")
+case "$SHELL_NAME" in
+    bash)  RC_FILE="$HOME/.bashrc" ;;
+    zsh)   RC_FILE="$HOME/.zshrc" ;;
+    fish)  RC_FILE="$HOME/.config/fish/config.fish" ;;
+    *)     RC_FILE="$HOME/.profile" ;;
+esac
+
 # Define and build the target installation directory
 INSTALL_DIR="/data/data/com.termux/files/usr/opt"
 mkdir -p "$INSTALL_DIR"
@@ -46,11 +55,11 @@ tar -xzf "$TAR_FILE" -C "$INSTALL_DIR"
 # Cleanup the installer package to save storage space
 rm "$TAR_FILE"
 
-# Set up environmental variables safely in ~/.zshrc (preventing duplicate appends)
-echo "⚙️ Configuring environment paths in ~/.zshrc..."
-grep -q "JAVA_HOME=${JAVA_HOME}" ~/.zshrc 2>/dev/null || echo "export JAVA_HOME=${JAVA_HOME}" >> ~/.zshrc
-grep -q "PATH=\$PATH:\$JAVA_HOME/bin" ~/.zshrc 2>/dev/null || echo 'export PATH=$PATH:$JAVA_HOME/bin' >> ~/.zshrc
-grep -q "PATH=.*android-studio/bin" ~/.zshrc 2>/dev/null || echo "export PATH=\$PATH:${INSTALL_DIR}/android-studio/bin" >> ~/.zshrc
+# Set up environmental variables safely in RC file (preventing duplicate appends)
+echo "⚙️ Configuring environment paths in ${RC_FILE}..."
+grep -q "JAVA_HOME=${JAVA_HOME}" "$RC_FILE" 2>/dev/null || echo "export JAVA_HOME=${JAVA_HOME}" >> "$RC_FILE"
+grep -q "PATH=\$PATH:\$JAVA_HOME/bin" "$RC_FILE" 2>/dev/null || echo 'export PATH=$PATH:$JAVA_HOME/bin' >> "$RC_FILE"
+grep -q "PATH=.*android-studio/bin" "$RC_FILE" 2>/dev/null || echo "export PATH=\$PATH:${INSTALL_DIR}/android-studio/bin" >> "$RC_FILE"
 
 # Create X11 Application Desktop Shortcut with matching version titles
 echo "🖥️ Creating Termux-X11 desktop launcher..."
@@ -71,5 +80,5 @@ EOF
 chmod +x ~/Desktop/AndroidStudio.desktop
 
 echo "✅ Android Studio ${VERSION_NUM} (${VERSION_NAME}) setup completed successfully!"
-echo "💡 Reload your terminal context using: source ~/.zshrc"
+echo "💡 Reload your terminal context using: source ${RC_FILE}"
 echo "🚀 Start your IDE within your X11 session or run: studio.sh"

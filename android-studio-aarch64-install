@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+clear
+echo
+echo "Unofficial Android Studio Install for aarch64 Linux."
+read -r -p "Hit [Enter] to continue, [CTRL-C] to quit. "
+echo
+echo "Please wait..."
+
+# You may need to apt/dnf install curl, pigz, xz
+
+INSTALL_DIR="$HOME/.local/share"
+AS_ROOT_DIR="${INSTALL_DIR}/android-studio"
+SDK_ROOT_DIR="$HOME/Android/Sdk"
+NDK_DIR="${SDK_ROOT_DIR}/ndk"
+
+AS_VERSION="2026.1.1.10"
+AS_FILENAME="android-studio-quail1-patch2-linux.tar.gz"
+AS_URL="https://redirector.gvt1.com/edgedl/android/studio/ide-zips/${AS_VERSION}/${AS_FILENAME}"
+
+IDEA_VERSION="2026.1.1"
+IDEA_URL="https://download.jetbrains.com/idea/idea-${IDEA_VERSION}-aarch64.tar.gz"
+
+# Must match the JBR bundled in the AS release above (read from its jbr/release file).
+JBR_VERSION_TAG="21.0.10-linux-aarch64-b1163.108"
+JBR_URL="https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk_ft-${JBR_VERSION_TAG}.tar.gz"
+
+SDK_RELEASE_VERSION="36.0.0"
+SDK_URL="https://github.com/HomuHomu833/android-sdk-custom/releases/download/${SDK_RELEASE_VERSION}/android-sdk-aarch64-linux-musl.tar.xz"
+
+NDK_VERSION="r29"
+NDK_BUILD_NUMBER="29.0.14206865"
+NDK_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/${NDK_VERSION}/android-ndk-${NDK_VERSION}-aarch64-linux-android.tar.xz"
+
+mkdir -p "${INSTALL_DIR}" "${AS_ROOT_DIR}" "${SDK_ROOT_DIR}" "${NDK_DIR}"
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/androidstudio-installer"
+mkdir -p "$CACHE_DIR"
+
+curl_resume() {
+  local url="$1" out="$2"
+  local tmp="${out}.part"
+  local tries=8 wait=3 i=1
+  while :; do
+    if curl -L --fail-with-body --retry 10 --retry-delay 5 --retry-all-errors \
+      --connect-timeout 15 --max-time 0 \
+      -C - -o "$tmp" "$url"; then
+      mv -f "$tmp" "$out"
+      return 0
+    fi
+    if (( i >= tries )); then
+      echo "ERROR: download failed: $url" >&2
+      return 1
+    fi
+    echo "Retrying in ${wait}s..."
+    sleep "$wait"
+    i=$((i+1))
+    if (( wait < 30 )); then wait=$((wait*2)); fi
+  done
+}
+
+tar_gz_file() {
+  local arc="$1" dest="$2"
+  shift 2
+  pigz -d -c "$arc" | tar --no-same-owner -C "$dest" -x -f - "$@"
+}
+
+tar_xz_file() {
+  local arc="$1" dest="$2"
+  shift 2
+  xz -T0 -d -c "$arc" | tar --no-same-owner -C "$dest" -x -f - "$@"
+}
+
+echo "Installing Android Studio core"
+AS_TGZ="${CACHE_DIR}/android-studio-${AS_VERSION}.tar.gz"
+curl_resume "${AS_URL}" "$AS_TGZ"
+tar_gz_file "$AS_TGZ" "${INSTALL_DIR}" \
+  --exclude 'android-studio/jbr/*' \
+  --exclude 'android-studio/lib/jna/*' \
+  --exclude 'android-studio/lib/native/*' \
+  --exclude 'android-studio/lib/pty4j/*'
+
+echo "Merging IntelliJ files"
+IDEA_TGZ="${CACHE_DIR}/ideaIC-${IDEA_VERSION}-aarch64.tar.gz"
+curl_resume "${IDEA_URL}" "$IDEA_TGZ"
+tar_gz_file "$IDEA_TGZ" "${AS_ROOT_DIR}" \
+  --wildcards '*/bin/fsnotifier' '*/bin/restarter' '*/lib/jna' '*/lib/native' '*/lib/pty4j' \
+  --strip-components=1
+
+echo "Installing JBR"
+mkdir -p "${AS_ROOT_DIR}/jbr"
+JBR_TGZ="${CACHE_DIR}/jbrsdk_${JBR_VERSION_TAG}.tar.gz"
+curl_resume "${JBR_URL}" "$JBR_TGZ"
+tar_gz_file "$JBR_TGZ" "${AS_ROOT_DIR}/jbr" --strip-components=1
+
+echo "Patching scripts"
+mv "${AS_ROOT_DIR}/bin/studio" "${AS_ROOT_DIR}/bin/studio.do_not_use" || true
+sed -i 's/amd64/aarch64/g' "${AS_ROOT_DIR}/bin/"*.sh
+sed -i 's/amd64/aarch64/g' "${AS_ROOT_DIR}/product-info.json"
+
+echo "Installing Android SDK"
+SDK_TXZ="${CACHE_DIR}/android-sdk-${SDK_RELEASE_VERSION}-aarch64-linux-musl.tar.xz"
+curl_resume "${SDK_URL}" "$SDK_TXZ"
+tar_xz_file "$SDK_TXZ" "${SDK_ROOT_DIR}" --strip-components=1
+
+echo "Installing Android NDK"
+NDK_TXZ="${CACHE_DIR}/android-ndk-${NDK_VERSION}-aarch64-linux-android.tar.xz"
+curl_resume "${NDK_URL}" "$NDK_TXZ"
+tar_xz_file "$NDK_TXZ" "${NDK_DIR}"
+mv "${NDK_DIR}/android-ndk-${NDK_VERSION}" "${NDK_DIR}/${NDK_BUILD_NUMBER}"
+
+echo "Running: $HOME/.local/share/android-studio/bin/studio.sh"
+$HOME/.local/share/android-studio/bin/studio.sh >/tmp/studio.log 2>&1 &
+
+echo
+echo " - Run through setup wizard, Install type: Custom"
+echo "   Uncheck AVD emulator. It’s safe to ignore warnings"
+echo "   about missing Emulator components."
+echo
+echo " - From 'Welcome to Android Studio' window, click the"
+echo "   gear icon at bottom-left -> Create Desktop Entry"
+echo
+echo "REQUIRED - Add the following to your project's 'gradle.properties'"
+echo "   android.aapt2FromMavenOverride=$HOME/Android/Sdk/build-tools/36.1.0/aapt2"
+echo
+echo "Done."

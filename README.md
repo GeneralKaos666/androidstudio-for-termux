@@ -1,5 +1,3 @@
-[English](#english) | [中文](#中文)
-
 # Android Studio Installer for Termux (aarch64)
 
 **This is the main installer:** [`install-android-studio-termux-aarch64.sh`](install-android-studio-termux-aarch64.sh) — merges Termux-native setup with aarch64 SDK/NDK/JBR/IntelliJ-native-binary fixes for a fully working Android Studio on aarch64 Termux.

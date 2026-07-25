@@ -171,5 +171,4 @@ Generally, deploying a Linux container via Android Termux to run native arm64 ap
 - [termux-ndk (lzhiyong)](https://github.com/lzhiyong/termux-ndk) — precompiled aarch64 NDK
 - [Android Studio Archive](https://developer.android.google.cn/studio/archive)
 - [JetBrainsRuntime](https://github.com/JetBrains/JetBrainsRuntime)
-- [Does an Android Studio Linux arm64 version exist? — Stack Overflow](https://stackoverflow.com/questions/71067886/does-an-android-studio-linux-arm64-version-exist/77020732#77020732)
 

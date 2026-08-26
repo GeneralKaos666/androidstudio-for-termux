@@ -13,7 +13,7 @@ pkg install x11-repo -y
 pkg install termux-x11-nightly xfce4 openjdk-21 maven wget unzip tar -y
 
 # Auto-detect JAVA_HOME from installed JDK with fallback
-JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java 2>/dev/null))) 2>/dev/null) || JAVA_HOME="/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk"
+JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(which java 2>/dev/null)")")" 2>/dev/null) || JAVA_HOME="/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk"
 
 # Detect user's default shell and set the appropriate RC file
 SHELL_NAME=$(basename "$SHELL")
@@ -45,26 +45,55 @@ TAR_FILE=$(basename "$STUDIO_URL")
 VERSION_NUM=$(echo "$STUDIO_URL" | grep -oP '/\d+\.\d+\.\d+\.\d+/' | tr -d '/')
 VERSION_NAME=$(echo "$TAR_FILE" | sed 's/android-studio-//;s/-linux\.tar\.gz//')
 
-echo "📥 Downloading Android Studio ${VERSION_NUM} (${VERSION_NAME})..."
-# Use -c to allow resuming download if it gets interrupted
-wget -c "$STUDIO_URL" -O "$TAR_FILE"
+# Check what's already installed
+SKIP_DOWNLOAD=false
+SKIP_ENV=false
+SKIP_DESKTOP=false
+INSTALLED_BUILD="${INSTALL_DIR}/android-studio/build.txt"
+DESKTOP_FILE=~/Desktop/AndroidStudio.desktop
 
-echo "📦 Extracting archive to ${INSTALL_DIR}..."
-tar -xzf "$TAR_FILE" -C "$INSTALL_DIR"
+if [ -f "$INSTALLED_BUILD" ]; then
+    INSTALLED_VERSION=$(cat "$INSTALLED_BUILD")
+    if echo "$INSTALLED_VERSION" | grep -q "$VERSION_NAME"; then
+        SKIP_DOWNLOAD=true
+    fi
+fi
 
-# Cleanup the installer package to save storage space
-rm "$TAR_FILE"
+if grep -q "JAVA_HOME=${JAVA_HOME}" "$RC_FILE" 2>/dev/null && \
+   grep -q "PATH=\$PATH:\$JAVA_HOME/bin" "$RC_FILE" 2>/dev/null && \
+   grep -q "PATH=.*android-studio/bin" "$RC_FILE" 2>/dev/null; then
+    SKIP_ENV=true
+fi
 
-# Set up environmental variables safely in RC file (preventing duplicate appends)
-echo "⚙️ Configuring environment paths in ${RC_FILE}..."
-grep -q "JAVA_HOME=${JAVA_HOME}" "$RC_FILE" 2>/dev/null || echo "export JAVA_HOME=${JAVA_HOME}" >> "$RC_FILE"
-grep -q "PATH=\$PATH:\$JAVA_HOME/bin" "$RC_FILE" 2>/dev/null || echo 'export PATH=$PATH:$JAVA_HOME/bin' >> "$RC_FILE"
-grep -q "PATH=.*android-studio/bin" "$RC_FILE" 2>/dev/null || echo "export PATH=\$PATH:${INSTALL_DIR}/android-studio/bin" >> "$RC_FILE"
+if [ -f "$DESKTOP_FILE" ] && grep -q "Version=${VERSION_NUM}" "$DESKTOP_FILE" 2>/dev/null; then
+    SKIP_DESKTOP=true
+fi
 
-# Create X11 Application Desktop Shortcut with matching version titles
-echo "🖥️ Creating Termux-X11 desktop launcher..."
-mkdir -p ~/Desktop
-cat <<EOF > ~/Desktop/AndroidStudio.desktop
+if [ "$SKIP_DOWNLOAD" = true ] && [ "$SKIP_ENV" = true ] && [ "$SKIP_DESKTOP" = true ]; then
+    echo "✅ Android Studio ${VERSION_NUM} (${VERSION_NAME}) is already up to date. Nothing to do."
+else
+    # Download and extract if needed
+    if [ "$SKIP_DOWNLOAD" = false ]; then
+        echo "📥 Downloading Android Studio ${VERSION_NUM} (${VERSION_NAME})..."
+        wget -c "$STUDIO_URL" -O "$TAR_FILE"
+        echo "📦 Extracting archive to ${INSTALL_DIR}..."
+        tar -xzf "$TAR_FILE" -C "$INSTALL_DIR"
+        rm "$TAR_FILE"
+    fi
+
+    # Configure environment if needed
+    if [ "$SKIP_ENV" = false ]; then
+        echo "⚙️ Configuring environment paths in ${RC_FILE}..."
+        grep -q "JAVA_HOME=${JAVA_HOME}" "$RC_FILE" 2>/dev/null || echo "export JAVA_HOME=${JAVA_HOME}" >> "$RC_FILE"
+        grep -q "PATH=\$PATH:\$JAVA_HOME/bin" "$RC_FILE" 2>/dev/null || echo 'export PATH=$PATH:$JAVA_HOME/bin' >> "$RC_FILE"
+        grep -q "PATH=.*android-studio/bin" "$RC_FILE" 2>/dev/null || echo "export PATH=\$PATH:${INSTALL_DIR}/android-studio/bin" >> "$RC_FILE"
+    fi
+
+    # Create desktop entry if needed
+    if [ "$SKIP_DESKTOP" = false ]; then
+        echo "🖥️ Creating Termux-X11 desktop launcher..."
+        mkdir -p ~/Desktop
+        cat <<EOF > "$DESKTOP_FILE"
 [Desktop Entry]
 Type=Application
 Version=${VERSION_NUM}
@@ -75,9 +104,9 @@ Exec=${INSTALL_DIR}/android-studio/bin/studio.sh
 Terminal=false
 StartupNotify=true
 EOF
-
-# Grant execution permissions to the desktop launcher entry
-chmod +x ~/Desktop/AndroidStudio.desktop
+        chmod +x "$DESKTOP_FILE"
+    fi
+fi
 
 echo "✅ Android Studio ${VERSION_NUM} (${VERSION_NAME}) setup completed successfully!"
 echo "💡 Reload your terminal context using: source ${RC_FILE}"

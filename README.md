@@ -1,8 +1,8 @@
 # Android Studio Installer for Termux (aarch64)
 
-**This is the main installer:** [`install-android-studio-termux-aarch64.sh`](install-android-studio-termux-aarch64.sh) — merges Termux-native setup with aarch64 SDK/NDK/JBR/IntelliJ-native-binary fixes for a fully working Android Studio on aarch64 Termux.
+**This is the main installer:** [`install_Android_Studio.sh`](install_Android_Studio.sh) — sets up Android Studio to run natively on aarch64 Termux (no proot/chroot required).
 
-Auto-detects the latest Android Studio, downloads community aarch64 builds of SDK/NDK, merges IntelliJ Community aarch64 native binaries, and patches everything so it runs natively on arm64 Linux (no proot/chroot container required).
+Auto-detects the latest Android Studio version, downloads and installs it with dependencies, and configures the environment.
 
 ## Prerequisites
 
@@ -15,21 +15,18 @@ Auto-detects the latest Android Studio, downloads community aarch64 builds of SD
 ```bash
 git clone https://github.com/GeneralKaos666/androidstudio-for-termux
 cd androidstudio-for-termux
-chmod +x install-android-studio-termux-aarch64.sh
-./install-android-studio-termux-aarch64.sh
+chmod +x install_Android_Studio.sh
+./install_Android_Studio.sh
 ```
 
 ## What the script does
 
-1. Updates packages and installs dependencies (`x11-repo`, `termux-x11-nightly`, `XFCE4`, `curl`, `wget`, `tar`, ...)
-2. Auto-detects the latest Android Studio download URL from Google's developer site
-3. Downloads and extracts Android Studio (excluding bundled x86 JBR and x86 native libs)
-4. Downloads IntelliJ Community **aarch64** build and merges its native binaries (fsnotifier, restarter, JNA, pty4j)
-5. Downloads JetBrains Runtime (JBR) **aarch64** — the JDK Android Studio needs
-6. Downloads **aarch64 Android SDK** (community build from HomuHomu833)
-7. Downloads **aarch64 Android NDK** (community build from HomuHomu833)
-8. Patches `amd64` → `aarch64` in shell scripts and `product-info.json`
-9. Configures `JAVA_HOME` → JBR, updates `PATH`, creates desktop launcher
+1. Updates packages and installs dependencies (`x11-repo`, `termux-x11-nightly`, `XFCE4`, `openjdk-21`, `wget`, ...)
+2. Auto-detects the latest Android Studio version from Google's developer site (falls back to hardcoded version)
+3. Skips download if the installed version already matches
+4. Downloads and extracts Android Studio
+5. Configures `JAVA_HOME` and `PATH` in the user's shell RC file (with duplicate guards)
+6. Creates a Termux-X11 desktop launcher
 
 ## Usage
 
@@ -58,7 +55,7 @@ The SDK path is auto-resolved from `ANDROID_HOME` (set to `~/Android/Sdk`).
 
 ## Updating
 
-Re-run the script — it auto-detects the latest version and the `~/.zshrc`/`~/.bashrc` guards prevent duplicate entries.
+Re-run the script — it auto-detects the latest version and skips the download, env var setup, and desktop entry if everything is already up to date.
 
 ## Uninstall
 

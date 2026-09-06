@@ -21,23 +21,38 @@ chmod +x install_Android_Studio.sh
 
 ## What the script does
 
-1. Updates packages and installs dependencies (`x11-repo`, `termux-x11-nightly`, `XFCE4`, `openjdk-21`, `wget`, ...)
+1. Updates packages and installs dependencies (`x11-repo`, `termux-x11-nightly`, `XFCE4`, `openjdk-21`, plus the Termux glibc runtime `glibc-repo`/`glibc-runner` and `patchelf`)
 2. Auto-detects the latest Android Studio version from Google's developer site (falls back to hardcoded version)
-3. Skips download if the installed version already matches
-4. Downloads and extracts Android Studio
-5. Configures `JAVA_HOME` and `PATH` in the user's shell RC file (with duplicate guards)
-6. Creates a Termux-X11 desktop launcher
+3. Skips the download if the installed version already matches — but if an existing install was never converted (still x86_64), it repairs it in place
+4. Downloads and extracts Android Studio, excluding the x86_64 JBR and native libraries
+5. Converts the install to aarch64:
+   - swaps the bundled x86_64 JetBrains Runtime for the matching **aarch64 JBR** (version read from `jbr/release`)
+   - merges aarch64 native binaries (`fsnotifier`, `restarter`, `lib/jna`, `lib/native`, `lib/pty4j`) from an **IntelliJ Community aarch64** build — exact companion version if JetBrains still publishes it, otherwise the newest published aarch64 build (JetBrains dropped Linux-aarch64 Community releases after the 2025.2 line; these natives are version-independent so a neighbouring build works)
+   - patches `amd64` → `aarch64` in the launcher scripts and `product-info.json`, and disables the x86_64 `bin/studio` ELF
+   - re-points every ELF's interpreter/RUNPATH to Termux's **glibc runtime** (`$PREFIX/glibc`)
+6. Configures `JAVA_HOME` (→ the aarch64 JBR) and `PATH` in the user's shell RC file (with duplicate guards)
+7. Creates a Termux-X11 desktop launcher wired to the `studio-termux` wrapper
 
 ## Usage
 
-1. Start Termux X11: `termux-x11 :1 &`
+1. Start Termux X11: `termux-x11 :0 &`
 2. Start XFCE4: `xfce4-session &`
 3. Launch Android Studio:
    - Desktop icon: double-click `AndroidStudio.desktop`
-   - Terminal: `studio.sh` (if path sourced) or:
+   - Terminal: `studio-termux` (if path sourced) or:
      ```
-     /data/data/com.termux/files/usr/opt/android-studio/bin/studio.sh
+     /data/data/com.termux/files/usr/opt/android-studio/bin/studio-termux
      ```
+
+### Why `studio-termux`?
+
+The aarch64 JetBrains Runtime is glibc-linked and runs through Termux's glibc
+runtime. The `studio-termux` wrapper sets `DISPLAY` (defaults to `:0`, the
+Termux:X11 default), clears `LD_PRELOAD` and `LD_LIBRARY_PATH` (which would
+otherwise make bionic/glibc executables crash), then execs `studio.sh`.
+
+`JAVA_HOME` is set to `<install>/android-studio/jbr` — the aarch64 JBR, not
+Termux's system OpenJDK.
 
 ### Post-install: Setup Wizard
 
@@ -55,7 +70,7 @@ The SDK path is auto-resolved from `ANDROID_HOME` (set to `~/Android/Sdk`).
 
 ## Updating
 
-Re-run the script — it auto-detects the latest version and skips the download, env var setup, and desktop entry if everything is already up to date.
+Re-run the script — it auto-detects the latest version and skips the download, env var setup, and desktop entry if everything is already up to date. If an existing install is already the latest version but was never aarch64-converted (e.g. from a pre-fix copy of the script), re-running converts it in place without re-downloading Android Studio.
 
 ## Uninstall
 

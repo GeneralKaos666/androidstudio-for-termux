@@ -102,6 +102,7 @@ fi
 TAR_FILE=$(basename "$STUDIO_URL")
 VERSION_NUM=$(echo "$STUDIO_URL" | grep -oP '/\d+\.\d+\.\d+\.\d+/' | tr -d '/')
 VERSION_NAME=$(echo "$TAR_FILE" | sed 's/android-studio-//;s/-linux\.tar\.gz//')
+CACHED_TAR="${CACHE_DIR}/${TAR_FILE}"
 
 # ================================================================
 # Step 3 — Decide what (if anything) still needs doing
@@ -112,12 +113,36 @@ SKIP_ENV=false
 SKIP_DESKTOP=false
 
 INSTALLED_BUILD="${AS_HOME}/build.txt"
+VERSION_STAMP="${AS_HOME}/.installer-version"
 
+# Skip the (large) Android Studio download when the version we would
+# download is already installed OR already cached:
+#   1. installed — build.txt, product-info.json, or our own stamp file
+#      contains VERSION_NUM or VERSION_NAME
+#   2. cached — ${CACHE_DIR}/${TAR_FILE} already exists (reused in 4a)
+INSTALLED_TEXT=""
 if [ -f "$INSTALLED_BUILD" ]; then
-	INSTALLED_VERSION=$(cat "$INSTALLED_BUILD")
-	if echo "$INSTALLED_VERSION" | grep -q "$VERSION_NAME"; then
-		SKIP_DOWNLOAD=true
-	fi
+	INSTALLED_TEXT="${INSTALLED_TEXT}$(cat "$INSTALLED_BUILD" 2>/dev/null || true)
+"
+fi
+if [ -f "${AS_HOME}/product-info.json" ]; then
+	INSTALLED_TEXT="${INSTALLED_TEXT}$(cat "${AS_HOME}/product-info.json" 2>/dev/null || true)
+"
+fi
+if [ -f "$VERSION_STAMP" ]; then
+	INSTALLED_TEXT="${INSTALLED_TEXT}$(cat "$VERSION_STAMP" 2>/dev/null || true)"
+fi
+
+if [ -n "$VERSION_NUM" ] && echo "$INSTALLED_TEXT" | grep -qF "$VERSION_NUM"; then
+	SKIP_DOWNLOAD=true
+elif [ -n "$VERSION_NAME" ] && echo "$INSTALLED_TEXT" | grep -qF "$VERSION_NAME"; then
+	SKIP_DOWNLOAD=true
+fi
+
+if [ "$SKIP_DOWNLOAD" = true ]; then
+	echo "📦 Android Studio ${VERSION_NUM} (${VERSION_NAME}) already installed — skipping download."
+elif [ -f "$CACHED_TAR" ]; then
+	echo "📦 Cached Android Studio archive found (${CACHED_TAR}) — reusing, no download needed."
 fi
 
 # A "converted" install: aarch64 JBR, x86 launcher disabled, wrapper present
@@ -150,7 +175,6 @@ else
 	IDE_INFO=""
 
 	if [ "$SKIP_DOWNLOAD" = false ]; then
-		CACHED_TAR="${CACHE_DIR}/${TAR_FILE}"
 		if [ ! -f "$CACHED_TAR" ]; then
 			echo "📥 Downloading Android Studio ${VERSION_NUM} (${VERSION_NAME})..."
 			wget -c "$STUDIO_URL" -O "$CACHED_TAR"
@@ -273,11 +297,26 @@ else
 		patchelf_glibc() {
 			local f="$1"
 			local orig new
+			[ -e "$f" ] || {
+				echo "  ⚠️ missing file (skipped): $f"
+				return 0
+			}
+			# Shared libraries (.so) have no PT_INTERP, so
+			# --set-interpreter always fails on them. Set RPATH/RUNPATH
+			# on every ELF, but only touch the interpreter on files
+			# that actually have one.
 			orig=$(patchelf --print-rpath "$f" 2>/dev/null || true)
 			new="$GLIBC_LIB"
 			[ -n "$orig" ] && new="$new:$orig"
-			patchelf --set-interpreter "$GLIBC_LOADER" --set-rpath "$new" "$f" \
-				2>/dev/null || echo "  ⚠️ patchelf failed: $f"
+			if ! patchelf --set-rpath "$new" "$f" 2>/dev/null; then
+				echo "  ⚠️ patchelf --set-rpath failed: $f"
+				return 0
+			fi
+			if patchelf --print-interpreter "$f" >/dev/null 2>&1; then
+				if ! patchelf --set-interpreter "$GLIBC_LOADER" "$f" 2>/dev/null; then
+					echo "  ⚠️ patchelf --set-interpreter failed: $f"
+				fi
+			fi
 		}
 		patch_elfs() {
 			local dir="$1"
@@ -339,6 +378,10 @@ StartupNotify=true
 EOF
 		chmod +x "$DESKTOP_FILE"
 	fi
+
+	# Record exactly which upstream tarball this install came from so the
+	# Step-3 installed-version check works even if build.txt format changes.
+	echo "${VERSION_NUM} ${VERSION_NAME} ${TAR_FILE}" >"${AS_HOME}/.installer-version"
 fi
 
 # ================================================================
